@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string 
+import requests
 
 app = Flask(__name__)
 
@@ -189,7 +190,7 @@ Important subjects:
     "time management": """Time management helps students use their time effectively.
 
 Tips:
-1. Create a daily schedule.
+1. Create a daily sdef ask_chedule.
 2. Prioritise important tasks.
 3. Avoid distractions.
 4. Complete assignments on time.
@@ -240,109 +241,113 @@ or visit its official website for accurate information.""",
 7. AI Engineer
 8. Government Officer."""
 }
+# ---------------- OLLAMA AI INTEGRATION ----------------
 
+def ask_ollama(question):
 
+    url = "http://127.0.0.1:11434/api/chat"
+
+    data = {
+        "model": "llama3.2:1b",
+        "messages": [
+            {
+                "role": "system",
+                "content": """
+                You are EduBot AI, a helpful general-purpose
+                educational assistant.
+
+                Answer educational and general knowledge
+                questions using simple English.
+
+                Give accurate, relevant and useful answers.
+                If you are unsure, say so honestly.
+                """
+            },
+            {
+                "role": "user",
+                "content": question
+            }
+        ],
+        "stream": False,
+        "options": {
+            "temperature": 0.5,
+            "num_predict": 300
+        }
+    }
+
+    try:
+        print("Connecting to Ollama...")
+
+        response = requests.post(
+            url,
+            json=data,
+            timeout=(10, 300)
+        )
+
+        print("Ollama status:", response.status_code)
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        answer = result.get("message", {}).get("content", "")
+
+        if answer.strip():
+            print("Answer generated successfully!")
+            return answer.strip()
+
+        return "Sorry, no answer was generated."
+
+    except requests.exceptions.Timeout:
+        return "Ollama is taking too long. Please try again."
+
+    except requests.exceptions.ConnectionError:
+        return "Ollama is not running. Please start Ollama."
+
+    except requests.exceptions.RequestException as e:
+        print("Ollama error:", str(e))
+        return "Unable to get an answer from Ollama."
+
+    except (ValueError, KeyError) as e:
+        print("Response error:", str(e))
+        return "Invalid response received from Ollama."
 # ---------------- CHATBOT BRAIN ----------------
 
 def get_response(user_message):
 
-    question = user_message.lower().strip()
+    question = user_message.strip()
 
     if not question:
         return "Please enter your question."
 
-    if any(word in question for word in
-           ["hello", "hi", "hey", "good morning", "good evening"]):
-        return "Hello! Welcome to EduBot AI! 🎓 How can I help you today?"
+    lower_question = question.lower()
 
-    if any(word in question for word in ["bye", "goodbye"]):
-        return "Goodbye! Keep learning and achieve your dreams! 💜"
+    # Greeting responses
+    if lower_question in [
+        "hi", "hello", "hey",
+        "good morning", "good afternoon",
+        "good evening"
+    ]:
+        return (
+            "Hello! Welcome to EduBot AI! 🎓 "
+            "How can I help you today?"
+        )
 
-    if "thankyou" in question:
+    # Goodbye responses
+    if lower_question in ["bye", "goodbye", "see you"]:
+        return (
+            "Goodbye! Keep learning and "
+            "achieve your dreams! 💜"
+        )
+
+    # Thank you responses
+    if lower_question in [
+        "thanks", "thank you", "thank you so much"
+    ]:
         return "You're welcome! Happy learning! 😊"
 
-    # Direct keyword matching
-    if "Scholarships" in question:
-        return knowledge["Scholarships"]
-
-    if "admission" in question:
-        return knowledge["admission"]
-
-    if "course" in question or "degree" in question:
-        return knowledge["course"]
-
-    if "career" in question or "job" in question:
-        return knowledge["career"]
-
-    if "exam" in question or "test" in question:
-        return knowledge["exam"]
-
-    if "study" in question or "revision" in question:
-        return knowledge["study"]
-
-    if "artificial intelligence" in question or "what is ai" in question:
-        return knowledge["artificial intelligence"]
-
-    if "machine learning" in question:
-        return knowledge["machine learning"]
-
-    if "online learning" in question or "learning platforms" in question:
-        return knowledge["online learning"]
-
-    if "higher education" in question:
-        return knowledge["higher education"]
-
-    if "programming" in question or "coding" in question:
-        return knowledge["programming"]
-
-    if "computer" in question:
-        return knowledge["computer"]
-
-    if "competitive" in question or "upsc" in question:
-        return knowledge["competitive"]
-
-    if "time management" in question:
-        return knowledge["time management"]
-
-    if "resume" in question:
-        return knowledge["resume"]
-
-    if "university" in question:
-        return knowledge["university"]
-
-    if "fee" in question or "fees" in question:
-        return knowledge["fee"]
-
-    if "internet" in question:
-        return knowledge["internet"]
-
-    if "school" in question:
-        return knowledge["school"]
-
-    if "college" in question:
-        return knowledge["college"]
-
-    if "education" in question:
-        return knowledge["education"]
-
-    return """I'm still learning about this topic! 😊
-
-You can ask me about:
-
-📚 Education and Courses
-🏫 School and College
-🎓 Admissions and Scholarships
-📝 Examinations
-💼 Career Guidance
-💻 Programming and Computers
-🤖 Artificial Intelligence
-📖 Study Tips
-🌐 Online Learning
-⏰ Time Management
-
-Please try asking another question!"""
-
-
+    # Send all other questions to Ollama AI
+    return ask_ollama(question)
 # ---------------- HTML + CSS + JAVASCRIPT ----------------
 
 HTML_PAGE = """
@@ -772,13 +777,26 @@ def home():
 @app.route("/get_response", methods=["POST"])
 def chatbot():
 
-    data = request.get_json(silent=True) or {}
+    try:
+        data = request.get_json(silent=True) or {}
 
-    message = data.get("message", "")
+        message = data.get("message", "").strip()
 
-    reply = get_response(message)
+        print("Question received from website:", message)
 
-    return jsonify({"response": reply})
+        reply = get_response(message)
+
+        print("AI response:", reply)
+
+        return jsonify({"response": reply})
+
+    except Exception as e:
+
+        print("ERROR:", str(e))
+
+        return jsonify({
+            "response": "Something went wrong: " + str(e)
+        }), 500
 
 
 # ---------------- START APPLICATION ----------------
